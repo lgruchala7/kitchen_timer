@@ -23,10 +23,10 @@
 #define DISPLAY_MAX_NUM (60U)
 // Number of samples for mean value calculation
 #define MEAN_SAMPLE_COUNT (3U)
-// Button press time threshold to freeze the display
-#define DISPLAY_FREEZE_TIME_MS (100U)
-// Button press time threshold to release the display
-#define DISPLAY_FREE_TIME_MS (3000U)
+// Button press time threshold to lock the display
+#define DISPLAY_LOCK_TIME_MS (100U)
+// Button press time threshold to unlock the display
+#define DISPLAY_UNLOCKED_TIME_MS (3000U)
 /*==================================================================
     Function-like macros
 ===================================================================*/
@@ -64,8 +64,8 @@ enum
 // Possible display states
 typedef enum
 {
-  DISPLAY_FREE = 0,
-  DISPLAY_FREEZED = 1
+  DISPLAY_UNLOCKED = 0,
+  DISPLAY_LOCKED = 1
 } display_state_t;
 
 /*==================================================================
@@ -75,8 +75,8 @@ typedef enum
 static volatile bool measurement_pending;
 static volatile uint32_t potentiometer_cntr;
 static volatile uint32_t display_cntr;
-static volatile uint32_t freezed_state_cntr;
-static volatile uint16_t freezed_state_led_cntr;
+static volatile uint32_t locked_state_cntr;
+static volatile uint16_t locked_state_led_cntr;
 static int potentiometer_readout;
 static volatile int current_display;
 static uint8_t minutes_calculated;
@@ -399,7 +399,7 @@ ISR(TIMER1_OVF_vect)
     {
       digitalWrite(FIRST_DIGIT_EN, 1U);
       digitalWrite(SEC_DIGIT_EN, 0U);
-      if (DISPLAY_FREE == display_state)
+      if (DISPLAY_UNLOCKED == display_state)
       {
         write_digit(minutes_calculated / 10U);
       }
@@ -413,7 +413,7 @@ ISR(TIMER1_OVF_vect)
     {
       digitalWrite(FIRST_DIGIT_EN, 0U);
       digitalWrite(SEC_DIGIT_EN, 1U);
-      if (DISPLAY_FREE == display_state)
+      if (DISPLAY_UNLOCKED == display_state)
       {
         write_digit(minutes_calculated - ((minutes_calculated / 10U) * 10));
       }
@@ -427,22 +427,22 @@ ISR(TIMER1_OVF_vect)
     display_cntr = DISPLAY_TIMEOUT_MS;
   }
 
-  /* Countdown of minutes when display is freezed */
-  if ((DISPLAY_FREEZED == display_state) && (minutes_set > 0U))
+  /* Countdown of minutes when display is locked */
+  if ((DISPLAY_LOCKED == display_state) && (minutes_set > 0U))
   {
-    /* Update freezed dispplay value every minute */
-    freezed_state_cntr--;
-    if (0U == freezed_state_cntr)
+    /* Update locked display value every minute */
+    locked_state_cntr--;
+    if (0U == locked_state_cntr)
     {
       minutes_set--;
-      freezed_state_cntr = ONE_MINUTE_MS;
+      locked_state_cntr = ONE_MINUTE_MS;
     }
     /* Toggle LED state every second */
-    freezed_state_led_cntr--;
-    if (0U == freezed_state_led_cntr)
+    locked_state_led_cntr--;
+    if (0U == locked_state_led_cntr)
     {
       digitalWrite(LED_INTERNAL, !digitalRead(LED_INTERNAL));
-      freezed_state_led_cntr = ONE_SECOND_MS;
+      locked_state_led_cntr = ONE_SECOND_MS;
     }
   }
 }
@@ -450,7 +450,7 @@ ISR(TIMER1_OVF_vect)
 /**
  * @brief Detects a button press.
  *
- * This functions detects if user button is pressed and freezes/releases
+ * This functions detects if user button is pressed and locks/unlocks
  * the display state accordingly.
  *
  * @return None
@@ -474,25 +474,25 @@ static void detect_button(void)
   {
     switch (display_state)
     {
-    case DISPLAY_FREEZED:
+    case DISPLAY_LOCKED:
     {
-      if (BTN_PRESSED(btn_state) && ((sys_tick_cntr - btn_change_start) > DISPLAY_FREE_TIME_MS))
+      if (BTN_PRESSED(btn_state) && ((sys_tick_cntr - btn_change_start) > DISPLAY_UNLOCKED_TIME_MS))
       {
         make_sound(1000);
-        display_state = DISPLAY_FREE;
+        display_state = DISPLAY_UNLOCKED;
         btn_state_changed = false;
       }
       break;
     }
-    case DISPLAY_FREE:
+    case DISPLAY_UNLOCKED:
     {
-      if (BTN_PRESSED(btn_state) && ((sys_tick_cntr - btn_change_start) > DISPLAY_FREEZE_TIME_MS))
+      if (BTN_PRESSED(btn_state) && ((sys_tick_cntr - btn_change_start) > DISPLAY_LOCK_TIME_MS))
       {
         make_sound(100);
         minutes_set = minutes_calculated;
-        freezed_state_cntr = ONE_MINUTE_MS;
-        freezed_state_led_cntr = ONE_SECOND_MS;
-        display_state = DISPLAY_FREEZED;
+        locked_state_cntr = ONE_MINUTE_MS;
+        locked_state_led_cntr = ONE_SECOND_MS;
+        display_state = DISPLAY_LOCKED;
         btn_state_changed = false;
       }
       break;
@@ -515,7 +515,7 @@ void setup()
   setup_pins();
   setup_timers();
   setup_7seg_display();
-  display_state = DISPLAY_FREE;
+  display_state = DISPLAY_UNLOCKED;
   current_display = FIRST_DIGIT_EN;
   measurement_pending = false;
   potentiometer_readout = 0U;
@@ -549,9 +549,9 @@ void loop()
   detect_button();
 
   /* Check if time countdown has finished */
-  if ((DISPLAY_FREEZED == display_state) && (0U == minutes_set))
+  if ((DISPLAY_LOCKED == display_state) && (0U == minutes_set))
   {
     make_sound(500);
-    display_state = DISPLAY_FREE;
+    display_state = DISPLAY_UNLOCKED;
   }
 }
